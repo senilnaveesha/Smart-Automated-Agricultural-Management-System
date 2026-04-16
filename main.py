@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTabWidget
 )
 
-# Import your UI modules (we will create these next)
+# Import UI modules
 from ui.dashboard import DashboardPage
 from ui.ai_advisor import AIAdvisorPage
 from ui.disease_map import DiseaseMapPage
@@ -22,9 +22,13 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
 
-        # Initialize pages
-        self.dashboard = DashboardPage()
+        # ✅ Create AI page FIRST
         self.ai_advisor = AIAdvisorPage()
+
+        # ✅ Pass AI page into dashboard
+        self.dashboard = DashboardPage(ai_page=self.ai_advisor)
+
+        # Other pages
         self.disease_map = DiseaseMapPage()
         self.drone_control = DroneControlPage()
         self.controls = ControlsPage()
@@ -36,7 +40,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.drone_control, "🚁 Drone Control")
         self.tabs.addTab(self.controls, "⚙ Controls")
 
-        # Optional: Dark Theme (basic)
+        # Optional: Dark Theme
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #1e1e2f;

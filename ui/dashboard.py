@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from components.section_card import SectionCard
-from backend.udp_listener import UDPListener   # 🔥 NEW
+from backend.udp_listener import UDPListener
 
 
 # 🔹 LEFT PANEL FUNCTION
@@ -44,8 +44,11 @@ def create_left_panel():
 
 
 class DashboardPage(QWidget):
-    def __init__(self):
+    def __init__(self, ai_page=None):
         super().__init__()
+
+        # ✅ Store AI page reference
+        self.ai_page = ai_page
 
         # 🔥 MAIN LAYOUT
         main_layout = QHBoxLayout()
@@ -81,7 +84,6 @@ class DashboardPage(QWidget):
         for name in section_names:
             card = SectionCard(name)
             self.sections.append(card)
-
             self.grid.addWidget(card, row, col)
 
             col += 1
@@ -123,7 +125,7 @@ class DashboardPage(QWidget):
         # 🔥 LOAD TEST DATA (initial UI state)
         self.load_dummy_data()
 
-        # 🔥 START UDP LISTENER (AFTER UI IS READY)
+        # 🔥 START UDP LISTENER
         self.udp = UDPListener(port=5005)
         self.udp.data_received.connect(self.handle_udp_data)
         self.udp.start()
@@ -150,6 +152,16 @@ class DashboardPage(QWidget):
                 self.sections[index].update_data(
                     soil, temp, rain, pump, status
                 )
+
+            # 🔥 SEND DATA TO AI PAGE
+            if self.ai_page:
+                self.ai_page.update_sensor_data({
+                    "soil": soil,
+                    "temp": temp,
+                    "rain": rain,
+                    "disease": "None",
+                    "crop": "Tea"
+                })
 
         except Exception as e:
             print("[UI ERROR]", e)
