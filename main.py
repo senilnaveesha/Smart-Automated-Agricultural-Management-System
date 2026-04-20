@@ -1,3 +1,6 @@
+import os
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-gpu --no-sandbox"
+
 import sys
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTabWidget

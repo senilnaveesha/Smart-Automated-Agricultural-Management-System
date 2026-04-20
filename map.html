@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Field Selection</title>
+    <meta charset="utf-8" />
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- 🔥 QWebChannel -->
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+
+<script>
+    console.log("🚀 map.html loaded");
+
+    // =============================
+    // 🔗 CONNECT TO PYTHON
+    // =============================
+    let bridge = null;
+
+    new QWebChannel(qt.webChannelTransport, function(channel) {
+        bridge = channel.objects.bridge;
+        console.log("✅ WebChannel connected");
+    });
+
+    // =============================
+    // 🗺️ MAP SETUP
+    // =============================
+    var map = L.map('map').setView([6.9271, 79.8612], 15);
+
+    var normalMap = L.tileLayer(
+        'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+        { attribution: '© OpenStreetMap contributors' }
+    );
+
+    var satellite = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        { attribution: 'Tiles © Esri' }
+    );
+
+    var labels = L.tileLayer(
+        'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
+    );
+
+    var satelliteWithLabels = L.layerGroup([satellite, labels]);
+
+    satelliteWithLabels.addTo(map);
+
+    var baseMaps = {
+        "🛰️ Satellite": satelliteWithLabels,
+        "🗺️ Map": normalMap
+    };
+
+    L.control.layers(baseMaps).addTo(map);
+
+    // =============================
+    // 🔥 POLYGON DRAWING
+    // =============================
+    var points = [];
+    var markers = [];
+    var polygon = null;
+
+    map.on('click', function(e) {
+        var lat = e.latlng.lat;
+        var lng = e.latlng.lng;
+
+        points.push([lat, lng]);
+
+        var marker = L.marker([lat, lng]).addTo(map);
+        markers.push(marker);
+
+        if (polygon) {
+            map.removeLayer(polygon);
+        }
+
+        polygon = L.polygon(points, {
+            color: 'green'
+        }).addTo(map);
+
+        console.log("📍 Polygon updated:", points);
+
+        if (bridge) {
+            bridge.receivePolygon(points);
+        }
+    });
+
+    // =============================
+    // 🧹 CLEAR FIELD
+    // =============================
+    function clearField() {
+        console.log("🧹 Clearing field");
+
+        points = [];
+
+        markers.forEach(m => map.removeLayer(m));
+        markers = [];
+
+        if (polygon) {
+            map.removeLayer(polygon);
+            polygon = null;
+        }
+
+        if (window.pathLine) {
+            map.removeLayer(window.pathLine);
+            window.pathLine = null;
+        }
+
+        if (bridge) {
+            bridge.receivePolygon(points);
+        }
+    }
+
+    // =============================
+    // 🚁 DRAW DRONE PATH (FINAL)
+    // =============================
+    function drawPath(path) {
+
+        console.log("🔥 drawPath CALLED");
+        console.log("📡 Raw path:", path);
+
+        if (!path || path.length === 0) {
+            console.log("❌ Empty path received");
+            return;
+        }
+
+        // Convert safely
+        let fixedPath = path.map(p => [p[0], p[1]]);
+
+        console.log("✅ Converted path:", fixedPath);
+
+        // Remove old path
+        if (window.pathLine) {
+            map.removeLayer(window.pathLine);
+        }
+
+        // Draw path
+        window.pathLine = L.polyline(fixedPath, {
+            color: 'red',
+            weight: 3
+        }).addTo(map);
+
+        console.log("✅ Path drawn");
+
+        // Zoom to path
+        map.fitBounds(window.pathLine.getBounds());
+    }
+
+    // 🔥 IMPORTANT: make it global (Qt needs this)
+    window.drawPath = drawPath;
+    window.clearField = clearField;
+
+</script>
+
+</body>
+</html>
