@@ -11,30 +11,53 @@ class UDPListener(QThread):
         self.host = host
         self.port = port
         self.running = True
+        self.sock = None
 
     def run(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind((self.host, self.port))
+        try:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.sock.bind((self.host, self.port))
+            self.sock.settimeout(1.0)
 
-        print(f"[UDP] Listening on {self.host}:{self.port}")
+            print(f"[UDP] Listening on {self.host}:{self.port}")
 
-        while self.running:
-            try:
-                data, addr = sock.recvfrom(1024)
-                message = data.decode()
+            while self.running:
+                try:
+                    data, addr = self.sock.recvfrom(4096)
+                    message = data.decode().strip()
 
-                print(f"[UDP RECEIVED] {message}")
+                    print(f"[UDP RECEIVED:{self.port}] {message}")
 
-                # Parse JSON
-                parsed = json.loads(message)
+                    parsed = json.loads(message)
+                    self.data_received.emit(parsed)
 
-                # Emit to UI
-                self.data_received.emit(parsed)
+                except socket.timeout:
+                    continue
 
-            except Exception as e:
-                print("[UDP ERROR]", e)
+                except json.JSONDecodeError:
+                    print(f"[UDP ERROR:{self.port}] Invalid JSON:", message)
+
+                except Exception as e:
+                    if self.running:
+                        print(f"[UDP ERROR:{self.port}]", e)
+
+        except OSError as e:
+            print(f"[UDP BIND ERROR:{self.port}] {e}")
+
+        finally:
+            if self.sock:
+                self.sock.close()
+                self.sock = None
 
     def stop(self):
         self.running = False
+
+        if self.sock:
+            try:
+                self.sock.close()
+            except Exception:
+                pass
+
         self.quit()
-        self.wait()
+        self.wait(1000)

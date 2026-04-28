@@ -6,7 +6,6 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTabWidget
 )
 
-# Import UI modules
 from ui.dashboard import DashboardPage
 from ui.ai_advisor import AIAdvisorPage
 from ui.disease_map import DiseaseMapPage
@@ -21,29 +20,22 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Smart Agriculture System")
         self.setGeometry(100, 100, 1200, 800)
 
-        # Create tab system
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
 
-        # ✅ Create AI page FIRST
         self.ai_advisor = AIAdvisorPage()
-
-        # ✅ Pass AI page into dashboard
         self.dashboard = DashboardPage(ai_page=self.ai_advisor)
 
-        # Other pages
-        self.disease_map = DiseaseMapPage()
+        self.disease_map = DiseaseMapPage(ai_advisor=self.ai_advisor)
         self.drone_control = DroneControlPage()
         self.controls = ControlsPage()
 
-        # Add tabs
         self.tabs.addTab(self.dashboard, "🌱 Dashboard")
         self.tabs.addTab(self.ai_advisor, "🤖 AI Advisor")
         self.tabs.addTab(self.disease_map, "🦠 Disease Map")
         self.tabs.addTab(self.drone_control, "🚁 Drone Control")
         self.tabs.addTab(self.controls, "⚙ Controls")
 
-        # Optional: Dark Theme
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #1e1e2f;

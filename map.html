@@ -4,8 +4,8 @@
     <title>Field Selection</title>
     <meta charset="utf-8" />
 
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <!-- ✅ LOCAL CSS -->
+    <link rel="stylesheet" href="./libs/leaflet.css"/>
 
     <style>
         html, body {
@@ -22,150 +22,250 @@
 
 <div id="map"></div>
 
-<!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<!-- 🔥 QWebChannel -->
-<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<!-- =============================
+     🔥 LOCAL LIBRARIES (ORDER CRITICAL)
+============================= -->
+<script src="./libs/leaflet.js"></script>
+<script src="./libs/leaflet-heat.js"></script>
+<script src="./libs/qwebchannel.js"></script>
 
 <script>
-    console.log("🚀 map.html loaded");
+console.log("🚀 map.html loaded");
 
-    // =============================
-    // 🔗 CONNECT TO PYTHON
-    // =============================
-    let bridge = null;
+// =============================
+// 🔥 GLOBAL STATE
+// =============================
+window.leafletReady = false;
+window.scanMarkers = [];
+window.heatLayer = null;
+window.droneMarker = null;
+window.pathLine = null;
+
+let bridge = null;
+
+// =============================
+// 🔗 SAFE QT CONNECTION (FIXED)
+// =============================
+function initQtBridge() {
+
+    if (typeof QWebChannel === "undefined") {
+        console.log("⏳ Waiting for QWebChannel...");
+        setTimeout(initQtBridge, 200);
+        return;
+    }
+
+    if (typeof qt === "undefined") {
+        console.log("⚠️ Qt not available (OK for heatmap view)");
+        return;
+    }
 
     new QWebChannel(qt.webChannelTransport, function(channel) {
         bridge = channel.objects.bridge;
         console.log("✅ WebChannel connected");
     });
+}
 
-    // =============================
-    // 🗺️ MAP SETUP
-    // =============================
-    var map = L.map('map').setView([6.9271, 79.8612], 15);
+// =============================
+// 🗺️ MAP INIT
+// =============================
+function initMap() {
 
-    var normalMap = L.tileLayer(
-        'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-        { attribution: '© OpenStreetMap contributors' }
-    );
+    if (typeof L === "undefined") {
+        console.log("⏳ Waiting for Leaflet...");
+        setTimeout(initMap, 200);
+        return;
+    }
 
-    var satellite = L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        { attribution: 'Tiles © Esri' }
-    );
+    console.log("✅ Leaflet ready");
 
-    var labels = L.tileLayer(
-        'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
-    );
+    window.map = L.map('map').setView([6.9271, 79.8612], 15);
 
-    var satelliteWithLabels = L.layerGroup([satellite, labels]);
+    L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+    ).addTo(map);
 
-    satelliteWithLabels.addTo(map);
+    window.leafletReady = true;
 
-    var baseMaps = {
-        "🛰️ Satellite": satelliteWithLabels,
-        "🗺️ Map": normalMap
-    };
+    setupPolygonDrawing();
+}
 
-    L.control.layers(baseMaps).addTo(map);
+// =============================
+// 🔥 POLYGON DRAWING
+// =============================
+var points = [];
+var markers = [];
+var polygon = null;
 
-    // =============================
-    // 🔥 POLYGON DRAWING
-    // =============================
-    var points = [];
-    var markers = [];
-    var polygon = null;
+function setupPolygonDrawing() {
 
     map.on('click', function(e) {
-        var lat = e.latlng.lat;
-        var lng = e.latlng.lng;
+
+        let lat = e.latlng.lat;
+        let lng = e.latlng.lng;
 
         points.push([lat, lng]);
 
-        var marker = L.marker([lat, lng]).addTo(map);
+        let marker = L.marker([lat, lng]).addTo(map);
         markers.push(marker);
 
-        if (polygon) {
-            map.removeLayer(polygon);
-        }
+        if (polygon) map.removeLayer(polygon);
 
-        polygon = L.polygon(points, {
-            color: 'green'
-        }).addTo(map);
+        polygon = L.polygon(points, { color: 'green' }).addTo(map);
 
-        console.log("📍 Polygon updated:", points);
-
-        if (bridge) {
-            bridge.receivePolygon(points);
-        }
+        if (bridge) bridge.receivePolygon(points);
     });
+}
 
-    // =============================
-    // 🧹 CLEAR FIELD
-    // =============================
-    function clearField() {
-        console.log("🧹 Clearing field");
+// =============================
+// 🧹 CLEAR FIELD
+// =============================
+function clearField() {
 
-        points = [];
+    points = [];
 
-        markers.forEach(m => map.removeLayer(m));
-        markers = [];
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
 
-        if (polygon) {
-            map.removeLayer(polygon);
-            polygon = null;
-        }
+    if (polygon) map.removeLayer(polygon);
+    if (window.pathLine) map.removeLayer(window.pathLine);
+    if (window.droneMarker) map.removeLayer(window.droneMarker);
 
-        if (window.pathLine) {
-            map.removeLayer(window.pathLine);
-            window.pathLine = null;
-        }
+    window.scanMarkers.forEach(m => map.removeLayer(m));
+    window.scanMarkers = [];
 
-        if (bridge) {
-            bridge.receivePolygon(points);
-        }
+    if (window.heatLayer) {
+        map.removeLayer(window.heatLayer);
+        window.heatLayer = null;
     }
 
-    // =============================
-    // 🚁 DRAW DRONE PATH (FINAL)
-    // =============================
-    function drawPath(path) {
+    if (bridge) bridge.receivePolygon(points);
+}
 
-        console.log("🔥 drawPath CALLED");
-        console.log("📡 Raw path:", path);
+// =============================
+// 🚁 DRAW PATH
+// =============================
+function drawPath(path) {
 
-        if (!path || path.length === 0) {
-            console.log("❌ Empty path received");
+    if (!window.leafletReady || !path || path.length === 0) return;
+
+    let fixed = path.map(p => [p[0], p[1]]);
+
+    if (window.pathLine) map.removeLayer(window.pathLine);
+
+    window.pathLine = L.polyline(fixed, {
+        color: 'red',
+        weight: 2
+    }).addTo(map);
+
+    map.fitBounds(window.pathLine.getBounds());
+}
+
+// =============================
+// 🚁 DRONE
+// =============================
+function initDrone(startPoint) {
+
+    if (!window.leafletReady) return;
+
+    if (window.droneMarker) map.removeLayer(window.droneMarker);
+
+    window.droneMarker = L.marker(startPoint, {
+        icon: L.icon({
+            iconUrl: "https://cdn-icons-png.flaticon.com/512/149/149995.png",
+            iconSize: [25, 25]
+        })
+    }).addTo(map);
+}
+
+function moveDrone(point) {
+    if (window.droneMarker) {
+        window.droneMarker.setLatLng(point);
+    }
+}
+
+// =============================
+// 🟢 SCAN POINTS
+// =============================
+function drawScanPoints(points) {
+
+    if (!window.leafletReady) return;
+
+    points.forEach(p => {
+
+        if (p.lat === undefined || p.lon === undefined) return;
+
+        let color = (p.status === "diseased") ? "red" : "green";
+
+        let marker = L.circleMarker([p.lat, p.lon], {
+            radius: 3,
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.8
+        }).addTo(map);
+
+        window.scanMarkers.push(marker);
+    });
+}
+
+// =============================
+// 🔥 HEATMAP
+// =============================
+function drawHeatmap(points) {
+
+    function tryRender() {
+
+        if (!window.leafletReady || typeof L === "undefined") {
+            console.log("⏳ Waiting for Leaflet in heatmap...");
+            setTimeout(tryRender, 200);
             return;
         }
 
-        // Convert safely
-        let fixedPath = path.map(p => [p[0], p[1]]);
+        console.log("🔥 Rendering heatmap:", points.length);
 
-        console.log("✅ Converted path:", fixedPath);
+        let heatData = points
+            .filter(p => p.lat !== undefined && p.lon !== undefined)
+            .map(p => [p.lat, p.lon, p.status === "diseased" ? 1.0 : 0.2]);
 
-        // Remove old path
-        if (window.pathLine) {
-            map.removeLayer(window.pathLine);
+        if (heatData.length === 0) return;
+
+        if (window.heatLayer) {
+            map.removeLayer(window.heatLayer);
         }
 
-        // Draw path
-        window.pathLine = L.polyline(fixedPath, {
-            color: 'red',
-            weight: 3
+        window.heatLayer = L.heatLayer(heatData, {
+            radius: 35,
+            blur: 30,
+            maxZoom: 17
         }).addTo(map);
 
-        console.log("✅ Path drawn");
+        setTimeout(() => {
+            map.invalidateSize();
+            window.heatLayer.bringToFront();
+        }, 100);
 
-        // Zoom to path
-        map.fitBounds(window.pathLine.getBounds());
+        map.fitBounds(L.latLngBounds(heatData.map(p => [p[0], p[1]])));
+
+        console.log("✅ Heatmap rendered");
     }
 
-    // 🔥 IMPORTANT: make it global (Qt needs this)
-    window.drawPath = drawPath;
-    window.clearField = clearField;
+    tryRender();
+}
+
+// =============================
+// 🚀 INIT
+// =============================
+initQtBridge();
+initMap();
+
+// =============================
+// 🌍 EXPORT
+// =============================
+window.drawPath = drawPath;
+window.clearField = clearField;
+window.drawScanPoints = drawScanPoints;
+window.initDrone = initDrone;
+window.moveDrone = moveDrone;
+window.drawHeatmap = drawHeatmap;
 
 </script>
 

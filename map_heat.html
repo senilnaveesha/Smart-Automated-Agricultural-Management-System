@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Disease Heatmap</title>
+    <meta charset="utf-8" />
+
+    <link rel="stylesheet" href="./libs/leaflet.css"/>
+
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script src="./libs/leaflet.js"></script>
+<script src="./libs/leaflet-heat.js"></script>
+
+<script>
+console.log("🚀 map_heat.html loaded");
+
+window.leafletReady = false;
+window.map = null;
+window.heatLayer = null;
+
+function initMap() {
+    if (typeof L === "undefined") {
+        console.log("⏳ Waiting for Leaflet...");
+        setTimeout(initMap, 200);
+        return;
+    }
+
+    console.log("✅ Leaflet ready");
+
+    window.map = L.map("map").setView([6.9271, 79.8612], 15);
+
+    L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    ).addTo(window.map);
+
+    window.leafletReady = true;
+
+    setTimeout(() => {
+        if (window.map) {
+            window.map.invalidateSize();
+        }
+    }, 150);
+
+    console.log("✅ Heatmap map initialized");
+}
+
+function clearHeatmap() {
+    if (!window.map) return;
+
+    if (window.heatLayer) {
+        window.map.removeLayer(window.heatLayer);
+        window.heatLayer = null;
+    }
+
+    console.log("🧹 Heatmap cleared");
+}
+
+function drawHeatmap(points) {
+    function tryRender() {
+        if (!window.leafletReady || !window.map || typeof L === "undefined") {
+            console.log("⏳ Waiting for Leaflet/map in heatmap...");
+            setTimeout(tryRender, 200);
+            return;
+        }
+
+        if (typeof L.heatLayer !== "function") {
+            console.log("❌ L.heatLayer is not available");
+            return;
+        }
+
+        console.log("🔥 drawHeatmap called with points:", points);
+
+        const diseasedPoints = points.filter(
+            p => p.lat !== undefined &&
+                 p.lon !== undefined &&
+                 p.status === "diseased"
+        );
+
+        const heatData = diseasedPoints.map(p => [
+            Number(p.lat),
+            Number(p.lon),
+            1.0
+        ]);
+
+        console.log("🔥 diseasedPoints count:", diseasedPoints.length);
+        console.log("🔥 heatData:", heatData);
+
+        if (heatData.length === 0) {
+            console.log("⚠️ No diseased points to render");
+            return;
+        }
+
+        if (window.heatLayer) {
+            window.map.removeLayer(window.heatLayer);
+        }
+
+        window.heatLayer = L.heatLayer(heatData, {
+            radius: 35,
+            blur: 30,
+            maxZoom: 17
+        }).addTo(window.map);
+
+        window.map.fitBounds(
+            L.latLngBounds(heatData.map(p => [p[0], p[1]]))
+        );
+
+        setTimeout(() => {
+            window.map.invalidateSize();
+        }, 150);
+
+        console.log("✅ Heatmap rendered");
+    }
+
+    tryRender();
+}
+
+initMap();
+
+window.clearHeatmap = clearHeatmap;
+window.drawHeatmap = drawHeatmap;
+</script>
+
+</body>
+</html>
